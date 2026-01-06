@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chromebook 1080p Studio</title>
+    <style>
+        :root { --primary: #4a90e2; --danger: #e24a4a; --bg: #1e1e1e; --panel: #2c2c2c; --text: #ffffff; --accent: #00d26a; }
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Layout */
+        #video-container { flex: 2; background: #000; display: flex; align-items: center; justify-content: center; position: relative; flex-direction: column;}
+        video { width: 100%; max-height: 90%; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        #status-bar { width: 100%; padding: 8px; background: #111; color: var(--primary); font-size: 13px; text-align: center; border-top: 1px solid #333; font-weight: bold;}
+
+        #sidebar { flex: 1; padding: 20px; background: var(--panel); display: flex; flex-direction: column; border-left: 1px solid #444; overflow-y: auto; max-width: 400px; min-width: 320px;}
+        
+        /* Tabs */
+        .tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #444; }
+        .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; background: #333; color: #888; font-size: 14px;}
+        .tab:hover { background: #3a3a3a; }
+        .tab.active { background: var(--panel); color: white; border-top: 2px solid var(--primary); font-weight: bold; }
+        
+        /* Panels */
+        .panel-content { display: none; }
+        .panel-content.active { display: block; }
+
+        /* Controls */
+        h3 { margin-top: 0; font-size: 15px; color: #ddd; border-bottom: 1px solid #444; padding-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;}
+        .control-group { margin-bottom: 20px; background: #333; padding: 15px; border-radius: 6px; border: 1px solid #444;}
+        
+        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 4px; cursor: pointer; font-size: 13px; width: 100%; margin-bottom: 8px; font-weight: bold; transition: opacity 0.2s;}
+        button:hover { opacity: 0.9; }
+        button:active { transform: translateY(1px); }
+        button.secondary { background: #555; }
+        button.danger { background: var(--danger); }
+        button.record { background: var(--accent); color: #000; }
+        
+        input, textarea { width: 100%; background: #222; border: 1px solid #444; color: white; padding: 10px; margin-bottom: 10px; box-sizing: border-box; border-radius: 4px; font-family: monospace;}
+        input:focus, textarea:focus { outline: none; border-color: var(--primary); }
+        .time-inputs { display: flex; gap: 8px; }
+        
+        /* Lists */
+        ul { list-style: none; padding: 0; max-height: 250px; overflow-y: auto; border: 1px solid #333; background: #222; border-radius: 4px;}
+        li { padding: 10px; margin: 2px; border-radius: 2px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid transparent; cursor: pointer;}
+        li:hover { background: #333; }
+        li.cut-item { border-left: 3px solid var(--danger); }
+        li.sub-item { border-left: 3px solid var(--primary); }
+        .del-btn { color: #666; cursor: pointer; padding: 4px 8px; font-weight: bold; font-size: 14px;}
+        .del-btn:hover { color: var(--danger); background: rgba(255,255,255,0.1); border-radius: 4px;}
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #222; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #777; }
+        
+        /* Video Subtitle Styling */
+        video::cue {
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            font-size: 1.2rem;
+            text-shadow: 1px 1px 2px black;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="video-container">
+        <video id="mainVideo" controls crossorigin="anonymous">
+            <track id="subTrack" kind="subtitles" srclang="en" label="English" default>
+        </video>
+        <div id="status-bar">Waiting for video...</div>
+    </div>
+
+    <div id="sidebar">
+        <button id="btnOpenVideo" style="background: #444; border: 1px dashed #777; margin-bottom: 20px; padding: 20px;">📂 1. Open Video File (1080p)</button>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('subs')">Subtitles</div>
+            <div class="tab" onclick="switchTab('edits')">Cuts / Edits</div>
+            <div class="tab" onclick="switchTab('export')">Export</div>
+        </div>
+
+        <div id="panel-subs" class="panel-content active">
+            <div class="control-group">
+                <div class="time-inputs">
+                    <input type="text" id="inpSubStart" placeholder="00:00.000">
+                    <input type="text" id="inpSubEnd" placeholder="00:00.000">
+                </div>
+                <div class="time-inputs">
+                    <button class="secondary" onclick="setSubTime('start')">Set In</button>
+                    <button class="secondary" onclick="setSubTime('end')">Set Out</button>
+                </div>
+                <textarea id="inpSubText" rows="2" placeholder="Subtitle text..."></textarea>
+                <button onclick="addSubtitle()">➕ Add Subtitle</button>
+            </div>
+            <h3>Subtitle List</h3>
+            <ul id="subtitle-list"></ul>
+            <button id="btnSaveSub" class="secondary">💾 Download .VTT Only</button>
+        </div>
+
+        <div id="panel-edits" class="panel-content">
+            <div class="control-group">
+                <p style="font-size:12px; color:#aaa; margin-top:0">Mark sections to remove. The player will skip them automatically.</p>
+                <div class="time-inputs">
+                    <input type="text" id="inpCutStart" placeholder="Cut Start">
+                    <input type="text" id="inpCutEnd" placeholder="Cut End">
+                </div>
+                <div class="time-inputs">
+                    <button class="danger" onclick="setCutTime('start')">Mark Cut In</button>
+                    <button class="danger" onclick="setCutTime('end')">Mark Cut Out</button>
+                </div>
+                <button class="danger" onclick="addCut()">✂️ Create Cut</button>
+            </div>
+            <h3>Removed Sections</h3>
+            <ul id="cut-list"></ul>
+        </div>
+
+        <div id="panel-export" class="panel-content">
+             <div class="control-group" style="text-align:center">
+                <h3>Export to File</h3>
+                <p style="font-size:12px; color:#aaa;">This will play the video from start to finish and record it into a new file with your cuts and subtitles burned in.</p>
+                <div style="background:#222; padding:10px; margin-bottom:15px; border-radius:4px; border:1px solid #444;">
+                    <strong>⚠️ Important:</strong><br>
+                    <span style="font-size:11px; color:#ccc;">Do not switch tabs or minimize Chrome while recording.</span>
+                </div>
+                <button class="record" onclick="startExport()">🔴 Record & Save Video</button>
+                <button class="secondary" onclick="stopExport()" id="btnStop" disabled>Stop Recording</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let subtitles = [];
+        let cuts = [];
+        let recordedChunks = [];
+        let recorder;
+        let isExporting = false;
+
+        const video = document.getElementById('mainVideo');
+        const status = document.getElementById('status-bar');
+
+        // --- CORE VIDEO LOGIC ---
+        document.getElementById('btnOpenVideo').addEventListener('click', async () => {
+            try {
+                const [handle] = await window.showOpenFilePicker({
+                    types: [{ description: 'Videos', accept: { 'video/*': ['.mp4', '.webm', '.mkv', '.mov'] } }],
+                });
+                const file = await handle.getFile();
+                video.src = URL.createObjectURL(file);
+                status.textContent = `Loaded: ${file.name}`;
+            } catch (err) { console.log(err); }
+        });
+
+        function formatTime(seconds) {
+            const date = new Date(seconds * 1000);
+            return date.toISOString().substr(14, 9); // 00:00.000 format
+        }
+
+        function parseTime(timeStr) {
+            const p = timeStr.split(':');
+            return (parseFloat(p[0]) * 60) + parseFloat(p[1]);
+        }
+
+        // --- SUBTITLE LOGIC ---
+        function setSubTime(type) {
+            const el = type === 'start' ? 'inpSubStart' : 'inpSubEnd';
+            document.getElementById(el).value = formatTime(video.currentTime);
+        }
+
+        function addSubtitle() {
+            const start = document.getElementById('inpSubStart').value;
+            const end = document.getElementById('inpSubEnd').value;
+            const text = document.getElementById('inpSubText').value;
+            if(!start || !end || !text) return;
+
+            subtitles.push({ start, end, text });
+            subtitles.sort((a,b) => parseTime(a.start) - parseTime(b.start));
+            renderSubs();
+            updateVideoTrack();
+            document.getElementById('inpSubText').value = '';
+        }
+
+        function renderSubs() {
+            const list = document.getElementById('subtitle-list');
+            list.innerHTML = subtitles.map((s, i) => 
+                `<li class="sub-item" onclick="video.currentTime=${parseTime(s.start)}">
+                    <span>${s.start} - ${s.text.substring(0, 20)}...</span>
+                    <span class="del-btn" onclick="removeSub(event, ${i})">×</span>
+                </li>`
+            ).join('');
+        }
+
+        function removeSub(e, index) {
+            e.stopPropagation();
+            subtitles.splice(index, 1);
+            renderSubs();
+            updateVideoTrack();
+        }
+
+        function updateVideoTrack() {
+            let vtt = "WEBVTT\n\n";
+            subtitles.forEach(s => vtt += `${s.start} --> ${s.end}\n${s.text}\n\n`);
+            const blob = new Blob([vtt], { type: 'text/vtt' });
+            document.getElementById('subTrack').src = URL.createObjectURL(blob);
+            // Force refresh track
+            if(video.textTracks[0]) {
+                 video.textTracks[0].mode = 'hidden';
+                 setTimeout(() => video.textTracks[0].mode = 'showing', 50);
+            }
+        }
+
+        document.getElementById('btnSaveSub').onclick = async () => {
+            let vtt = "WEBVTT\n\n" + subtitles.map(s => `${s.start} --> ${s.end}\n${s.text}`).join('\n\n');
+            const handle = await window.showSaveFilePicker({ suggestedName: 'subs.vtt' });
+            const w = await handle.createWritable();
+            await w.write(vtt); await w.close();
+        };
+
+        // --- EDITING LOGIC ---
+        function setCutTime(type) {
+            const el = type === 'start' ? 'inpCutStart' : 'inpCutEnd';
+            document.getElementById(el).value = formatTime(video.currentTime);
+        }
+
+        function addCut() {
+            const startStr = document.getElementById('inpCutStart').value;
+            const endStr = document.getElementById('inpCutEnd').value;
+            if (!startStr || !endStr) return;
+
+            const start = parseTime(startStr);
+            const end = parseTime(endStr);
+            cuts.push({ start, end, startStr, endStr });
+            cuts.sort((a,b) => a.start - b.start);
+            renderCuts();
+            document.getElementById('inpCutStart').value = '';
+            document.getElementById('inpCutEnd').value = '';
+        }
+
+        function renderCuts() {
+            const list = document.getElementById('cut-list');
+            list.innerHTML = cuts.map((c, i) => 
+                `<li class="cut-item">
+                    <span>🚫 Skip ${c.startStr} ➡ ${c.endStr}</span>
+                    <span class="del-btn" onclick="removeCut(${i})">×</span>
+                </li>`
+            ).join('');
+        }
+
+        function removeCut(index) {
+            cuts.splice(index, 1);
+            renderCuts();
+        }
+
+        // --- VIRTUAL PLAYBACK ENGINE ---
+        video.addEventListener('timeupdate', () => {
+            // Do not skip if we are just seeking around manually
+            if (video.paused) return; 
+
+            const ct = video.currentTime;
+            for (let cut of cuts) {
+                if (ct >= cut.start && ct < cut.end) {
+                    video.currentTime = cut.end;
+                    if(!isExporting) {
+                        status.textContent = `Skipped section (${cut.startStr} - ${cut.endStr})`;
+                        setTimeout(() => status.textContent = "Playing...", 1500);
+                    }
+                }
+            }
+        });
+
+        // --- EXPORT / RECORDING LOGIC ---
+        async function startExport() {
+            if(!video.src) return alert("Load a video first!");
+            if(recorder && recorder.state === "recording") return;
+
+            isExporting = true;
+            document.getElementById('btnStop').disabled = false;
+            status.textContent = "🔴 Recording... Do not switch tabs!";
+            status.style.color = "var(--danger)";
+
+            // Set up stream
+            // Capture stream at 30fps
+            const stream = video.captureStream(30); 
+            
+            // Try enabling audio if present
+            // Note: CaptureStream audio can be tricky in some browsers without user interaction
+            const audioTracks = stream.getAudioTracks();
+            
+            const options = { mimeType: 'video/webm; codecs=vp9' };
+            
+            try {
+                recorder = new MediaRecorder(stream, options);
+            } catch (e) {
+                // Fallback if VP9 not supported
+                 recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+            }
+
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) recordedChunks.push(e.data);
+            };
+
+            recorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = "edited_video.webm";
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                }, 100);
+                
+                status.textContent = "Export Saved to Downloads!";
+                status.style.color = "var(--primary)";
+                isExporting = false;
+                document.getElementById('btnStop').disabled = true;
+            };
+
+            recordedChunks = [];
+            video.currentTime = 0; // Rewind to start
+            recorder.start();
+            
+            try {
+                await video.play();
+            } catch(e) {
+                console.error("Autoplay prevented", e);
+            }
+            
+            // Auto-stop when video ends
+            video.onended = () => {
+                if(recorder.state === "recording") stopExport();
+            };
+        }
+
+        function stopExport() {
+            if(recorder && recorder.state === "recording") {
+                recorder.stop();
+                video.pause();
+            }
+        }
+
+        // --- UI HELPERS ---
+        window.switchTab = (tabName) => {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
+            
+            if(tabName === 'subs') {
+                document.querySelectorAll('.tab')[0].classList.add('active');
+                document.getElementById('panel-subs').classList.add('active');
+            } else if (tabName === 'edits') {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('panel-edits').classList.add('active');
+            } else {
+                document.querySelectorAll('.tab')[2].classList.add('active');
+                document.getElementById('panel-export').classList.add('active');
+            }
+        };
+    </script>
+</body>
+</html>
